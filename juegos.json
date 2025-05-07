@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "titulo": "GTA SAN ANDREAS",
+    "genero": "Violencia",
+    "año_lanzamiento": 2004,
+    "desarrollador_id": 1,
+    "plataformas": [
+      1,
+      2
+    ]
+  }
+]

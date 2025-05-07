@@ -1,102 +1,171 @@
-from typing import List
-import json
-from uuid import UUID, uuid4
-from fastapi import FastAPI, HTTPException, status
-from models import Gender, Role, User, UserResponse
-
+from fastapi import FastAPI, HTTPException
+from models import Desarrollador, Plataforma, Juego
+from gestor_archivos import GestorArchivos
+from typing import List , Optional
 
 app = FastAPI(
-    title="API de Gestión de Usuarios",
-    description="API para gestionar información de usuarios",
+    title="API de Videojuegos",
+    description="API para gestionar información sobre videojuegos, plataformas y desarrolladores",
     version="1.0.0"
 )
 
-# Cargar datos de usuarios desde el archivo JSON
-def load_users():
-    with open("users.json", "r") as file:
-        users_data = json.load(file)
-        users = []
-        for user_data in users_data:
-            # Convertir UUID de string a objeto UUID
-            user_data["id"] = UUID(user_data["id"])
-            # Convertir strings de género y roles a enumeraciones
-            user_data["gender"] = Gender(user_data["gender"])
-            user_data["roles"] = [Role(role) for role in user_data["roles"]]
-            users.append(User(**user_data))
-    return users
+# Inicializar gestores de archivos
+gestor_desarrolladores = GestorArchivos(Desarrollador, "desarrolladores.json")
+gestor_plataformas = GestorArchivos(Plataforma, "plataformas.json")
+gestor_juegos = GestorArchivos(Juego, "juegos.json")
 
-# Guardar datos de usuarios en el archivo JSON
-def save_users(users: List[User]):
-    users_data = []
-    for user in users:
-        user_dict = user.dict()
-        # Convertir UUID a string para JSON
-        user_dict["id"] = str(user_dict["id"])
-        # Convertir enumeraciones a strings para JSON
-        user_dict["gender"] = user_dict["gender"].value
-        user_dict["roles"] = [role.value for role in user_dict["roles"]]
-        users_data.append(user_dict)
+# Endpoints para Desarrolladores
+@app.get("/desarrolladores", response_model=List[Desarrollador], tags=["Desarrolladores"])
+def listar_desarrolladores():
+    return gestor_desarrolladores.get_all()
+
+@app.get("/desarrolladores/{id}", response_model=Desarrollador, tags=["Desarrolladores"])
+def obtener_desarrollador(id: int):
+    desarrollador = gestor_desarrolladores.get_by_id(id)
+    if not desarrollador:
+        raise HTTPException(status_code=404, detail="Desarrollador no encontrado")
+    return desarrollador
+
+@app.post("/desarrolladores", response_model=Desarrollador, status_code=201, tags=["Desarrolladores"])
+def crear_desarrollador(desarrollador: Desarrollador):
+    try:
+        return gestor_desarrolladores.add(desarrollador)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/desarrolladores/{id}", response_model=Desarrollador, tags=["Desarrolladores"])
+def actualizar_desarrollador(id: int, desarrollador: Desarrollador):
+    if id != desarrollador.id:
+        raise HTTPException(status_code=400, detail="ID en URL no coincide con ID en cuerpo")
     
-    with open("users.json", "w") as file:
-        json.dump(users_data, file, indent=4)
+    actualizado = gestor_desarrolladores.update(id, desarrollador.dict())
+    if not actualizado:
+        raise HTTPException(status_code=404, detail="Desarrollador no encontrado")
+    return actualizado
 
-# Cargar la base de datos al inicio
-db: List[User] = load_users()
-
-@app.get("/")
-async def root():
-    # Convertir los usuarios a diccionarios para retornarlos como JSON
-    users_list = []
-    for user in db:
-        user_dict = {
-            "id": str(user.id),
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "gender": user.gender.value,
-            "roles": [role.value for role in user.roles]
-        }
-        users_list.append(user_dict)
-    
-    return {"users":users_list}
-
-@app.get("/api/v1/users/{user_id}", response_model=User)
-async def get_user(user_id: UUID):
-    for user in db:
-        if user.id == user_id:
-            return user
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Usuario con ID {user_id} no encontrado"
-    )
-
-@app.post("/api/v1/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user: User):
-    db.append(user)
-    save_users(db)  # Guardar cambios en el archivo
-    return {"id": user.id}
-
-@app.put("/api/v1/users/{user_id}", response_model=User)
-async def update_user(user_id: UUID, user_update: User):
-    for i, user in enumerate(db):
-        if user.id == user_id:
-            # Mantener el ID original
-            user_update.id = user_id
-            db[i] = user_update
-            save_users(db)  # Guardar cambios en el archivo
-            return user_update
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Usuario con ID {user_id} no encontrado"
-    )
-
-@app.delete("/api/v1/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: UUID):
-    for i, user in enumerate(db):
-        if user.id == user_id:
-            db.pop(i)
-            save_users(db)  # Guardar cambios en el archivo
-            return
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Usuario con ID {user_id} no encontrado"
+@app.delete("/desarrolladores/{id}", status_code=204, tags=["Desarrolladores"])
+def eliminar_desarrollador(id: int):
+    # Verificar si el desarrollador tiene juegos asociados
+    juegos = gestor_juegos.get_all()
+    if any(juego.desarrollador_id == id for juego in juegos):
+        raise HTTPException(
+            status_code=400, 
+            detail="No se puede eliminar el desarrollador porque tiene juegos asociados"
         )
+    
+    if not gestor_desarrolladores.delete(id):
+        raise HTTPException(status_code=404, detail="Desarrollador no encontrado")
+
+# Endpoints para Plataformas
+@app.get("/plataformas", response_model=List[Plataforma], tags=["Plataformas"])
+def listar_plataformas():
+    return gestor_plataformas.get_all()
+
+@app.get("/plataformas/{id}", response_model=Plataforma, tags=["Plataformas"])
+def obtener_plataforma(id: int):
+    plataforma = gestor_plataformas.get_by_id(id)
+    if not plataforma:
+        raise HTTPException(status_code=404, detail="Plataforma no encontrada")
+    return plataforma
+
+@app.post("/plataformas", response_model=Plataforma, status_code=201, tags=["Plataformas"])
+def crear_plataforma(plataforma: Plataforma):
+    try:
+        return gestor_plataformas.add(plataforma)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/plataformas/{id}", response_model=Plataforma, tags=["Plataformas"])
+def actualizar_plataforma(id: int, plataforma: Plataforma):
+    if id != plataforma.id:
+        raise HTTPException(status_code=400, detail="ID en URL no coincide con ID en cuerpo")
+    
+    actualizado = gestor_plataformas.update(id, plataforma.dict())
+    if not actualizado:
+        raise HTTPException(status_code=404, detail="Plataforma no encontrada")
+    return actualizado
+
+@app.delete("/plataformas/{id}", status_code=204, tags=["Plataformas"])
+def eliminar_plataforma(id: int):
+    # Verificar si la plataforma está asociada a algún juego
+    juegos = gestor_juegos.get_all()
+    if any(id in juego.plataformas for juego in juegos):
+        raise HTTPException(
+            status_code=400, 
+            detail="No se puede eliminar la plataforma porque está asociada a juegos"
+        )
+    
+    if not gestor_plataformas.delete(id):
+        raise HTTPException(status_code=404, detail="Plataforma no encontrada")
+
+# Endpoints para Juegos
+@app.get("/juegos", response_model=List[Juego], tags=["Juegos"])
+def listar_juegos():
+    return gestor_juegos.get_all()
+
+@app.get("/juegos/{id}", response_model=Juego, tags=["Juegos"])
+def obtener_juego(id: int):
+    juego = gestor_juegos.get_by_id(id)
+    if not juego:
+        raise HTTPException(status_code=404, detail="Juego no encontrado")
+    return juego
+
+@app.post("/juegos", response_model=Juego, status_code=201, tags=["Juegos"])
+def crear_juego(juego: Juego):
+    try:
+        # Verificar que el desarrollador existe
+        if not gestor_desarrolladores.get_by_id(juego.desarrollador_id):
+            raise HTTPException(status_code=400, detail="Desarrollador no existe")
+        
+        # Verificar que las plataformas existen
+        for plataforma_id in juego.plataformas:
+            if not gestor_plataformas.get_by_id(plataforma_id):
+                raise HTTPException(status_code=400, detail=f"Plataforma con ID {plataforma_id} no existe")
+        
+        return gestor_juegos.add(juego)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/juegos/{id}", response_model=Juego, tags=["Juegos"])
+def actualizar_juego(id: int, juego: Juego):
+    if id != juego.id:
+        raise HTTPException(status_code=400, detail="ID en URL no coincide con ID en cuerpo")
+    
+    # Verificar que el desarrollador existe
+    if not gestor_desarrolladores.get_by_id(juego.desarrollador_id):
+        raise HTTPException(status_code=400, detail="Desarrollador no existe")
+    
+    # Verificar que las plataformas existen
+    for plataforma_id in juego.plataformas:
+        if not gestor_plataformas.get_by_id(plataforma_id):
+            raise HTTPException(status_code=400, detail=f"Plataforma con ID {plataforma_id} no existe")
+    
+    actualizado = gestor_juegos.update(id, juego.dict())
+    if not actualizado:
+        raise HTTPException(status_code=404, detail="Juego no encontrado")
+    return actualizado
+
+@app.delete("/juegos/{id}", status_code=204, tags=["Juegos"])
+def eliminar_juego(id: int):
+    if not gestor_juegos.delete(id):
+        raise HTTPException(status_code=404, detail="Juego no encontrado")
+
+# Endpoint adicional para búsqueda
+@app.get("/juegos/buscar", response_model=List[Juego], tags=["Juegos"])
+def buscar_juegos(
+    genero: Optional[str] = None,
+    año_min: Optional[int] = None,
+    año_max: Optional[int] = None
+):
+    juegos = gestor_juegos.get_all()
+    
+    if genero:
+        juegos = [j for j in juegos if j.genero.lower() == genero.lower()]
+    
+    if año_min:
+        juegos = [j for j in juegos if j.año_lanzamiento >= año_min]
+    
+    if año_max:
+        juegos = [j for j in juegos if j.año_lanzamiento <= año_max]
+    
+    return juegos

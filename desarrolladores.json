@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "nombre": "Rockstar Games",
+    "pais": "EEUU",
+    "fundacion": 1998
+  },
+  {
+    "id": 2,
+    "nombre": "Gabriel García Márquez",
+    "pais": "Colombia",
+    "fundacion": 1927
+  }
+]

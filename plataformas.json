@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "nombre": "Xbox",
+    "fabricante": "Microsoft",
+    "lanzamiento": 2001
+  },
+  {
+    "id": 2,
+    "nombre": "playstation",
+    "fabricante": "SONY",
+    "lanzamiento": 1994
+  }
+]
